@@ -1,9 +1,9 @@
-#include "APIHandling.h"
+#include "InternetHandling.h"
 
 constexpr auto apiURLPrefixLen { 83 };
 constexpr auto apiURLSuffixLen { 11 };
-WiFiClientSecure g_wifiClient{};
-CertStore g_certStore{};
+
+WiFiClientSecure g_wiFiClient {};
 
 // a static-length character array which holds the API's URL
 char g_apiURL[apiURLPrefixLen + apiURLSuffixLen]
@@ -11,9 +11,20 @@ char g_apiURL[apiURLPrefixLen + apiURLSuffixLen]
     "https://api.sunrisesunset.io/json?lat=XXXXXXXXXX&lng=XXXXXXXXXX&timezone=XXXX&date=YYYY-MM-DD"
 };
 
-void timerHandler()
+void timerCallback()
 {
-    interface.interruptCallbackHandler.run();
+    interface.timerISRHandler.run();
+
+    if (!interface.shouldLEDBlink)
+        return;
+
+    static auto s_delayTimerStart { 0UL };
+
+    if (millis() - s_delayTimerStart >= Constants::ledBlinkDelay)
+    {
+        digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+        s_delayTimerStart = millis();
+    }
 }
 
 void sunriseHandler()
@@ -28,19 +39,6 @@ void sunsetHandler()
     interface.sunsetTimerSet = false;
 }
 
-void updateLEDIndicator()
-{
-    static auto s_delayTimerStart { 0UL };
-
-    if (millis() - s_delayTimerStart >= Constants::ledBlinkDelay)
-    {
-        static auto ledState { false };
-
-        digitalWrite(LED_BUILTIN, (ledState = !ledState));
-        s_delayTimerStart = millis();
-    }
-}
-
 bool initWiFi()
 {
     static auto s_lastWiFiConnectAttempt { 0UL };
@@ -51,6 +49,8 @@ bool initWiFi()
     else if (millis() - s_lastWiFiConnectAttempt > Constants::attemptWiFiCooldownLen)
         return false;
 
+    // indicate beginning of program-blocking internet operations via blinking LED
+    interface.setLEDIndicator(true);
 
     WiFi.begin(Constants::ssid, Constants::pw);
     unsigned long wiFiConnectStartTime { millis() };
@@ -59,29 +59,19 @@ bool initWiFi()
            && !WiFi.localIP()
            && (millis() - wiFiConnectStartTime <= Constants::wiFiTimeoutLen))
     {
-        updateLEDIndicator();
+        timerCallback();
         yield();
     }
 
     // potentially add handling to make error diagnostics easier
 
-    return (WiFi.status() == WL_CONNECTED);
-}
+    bool isWiFiConnected { WiFi.status() == WL_CONNECTED };
 
-bool parseSSLCertificates()
-{
-    int nCerts
-    {
-        g_certStore.initCertStore(LittleFS,PSTR("/certs.idx"),PSTR("/certs.ar"))
-    };
+    // disable blinking LED indicator if no connection
+    if (!isWiFiConnected)
+        interface.setLEDIndicator(false);
 
-    // add more sophisticated error handling
-    if (!nCerts)
-        return false;
-
-    g_wifiClient.setCertStore(&g_certStore);
-
-    return true;
+    return (isWiFiConnected);
 }
 
 int parseTimeField(const char*& timeString, char delimiter)
@@ -136,7 +126,7 @@ void updateApiURL(const std::tm& time)
         std::strncpy(&g_apiURL[apiURLPrefixLen], formattedDate, apiURLSuffixLen);
         g_apiURL[apiURLPrefixLen + apiURLSuffixLen - 1] = '\0';
     }
-    // add error handler
+    // add more sophisticated error handling
 }
 
 JsonDocument getApiJSON(const std::tm& currentTime)
@@ -144,7 +134,7 @@ JsonDocument getApiJSON(const std::tm& currentTime)
     updateApiURL(currentTime);
 
     HTTPClient httpClient{};
-    httpClient.begin(g_wifiClient, g_apiURL);
+    httpClient.begin(g_wiFiClient, g_apiURL);
 
     int respCode{ httpClient.GET() };
 
@@ -166,7 +156,7 @@ JsonDocument getApiJSON(const std::tm& currentTime)
     }
 
     // TO BE REMOVED:
-    // Serial.printf("HTTPResponse/SSLError codes: %d/%d\n", respCode, g_wifiClient.getLastSSLError());
+    // Serial.printf("HTTPResponse/SSLError codes: %d/%d\n", respCode, g_wiFiClient.getLastSSLError());
 
     return apiJSON;
 }
@@ -226,37 +216,34 @@ TimerUpdateData getTimerInfo()
 
     timerInfo.timersRequired = ((timerInfo.sunriseTimerLen - milliSecsElapsedToday) <= 0) ? 1 : 2;
 
-    apiJSON.clear();
-    
     return timerInfo;
 }
 
 bool updateTimers()
 {
-    // enable onboard LED to indicate that NTP server and API may be polled, which could take a few seconds
-    digitalWrite(LED_BUILTIN, LOW);
-
     // add more sophisticated error handling
     TimerUpdateData timerInfo { getTimerInfo() };
 
-    // blocking internet functions finished: disable connecting/parsing LED indicator
-    digitalWrite(LED_BUILTIN, HIGH);
-
-    // thinks code never reached bc it never sees that `timerRequired` is in scope with a potentially non-zero value
-    // debug timerInfo
-    // TimerUpdateData timerInfo { .timersRequired = 1, .sunriseTimerLen = -22, .sunsetTimerLen = 20'000 };
+    // input/motor-blocking operations finished: disable the onboard LED blink indicator
+    interface.setLEDIndicator(false);
 
     if (timerInfo.timersRequired > 0)
     {
-        if (interface.interruptCallbackHandler.setTimeout(timerInfo.sunsetTimerLen, sunsetHandler) != -1)
+        if (interface.timerISRHandler.setTimeout(timerInfo.sunsetTimerLen, sunsetHandler) != -1)
+        {
             interface.sunsetTimerSet = true;
+            // Serial.printf("sunset timer length = %d seconds\n", timerInfo.sunsetTimerLen / 1000);
+        }
         else
             return false;
 
         if (timerInfo.timersRequired > 1)
         {
-            if (interface.interruptCallbackHandler.setTimeout(timerInfo.sunriseTimerLen, sunriseHandler) != -1)
+            if (interface.timerISRHandler.setTimeout(timerInfo.sunriseTimerLen, sunriseHandler) != -1)
+            {
                 interface.sunriseTimerSet = true;
+                // Serial.printf("sunrise timer length = %d seconds\n", timerInfo.sunriseTimerLen / 1000);
+            }
             else
                 return false;
         }

@@ -1,5 +1,5 @@
-#ifndef AUTOBLINDSNODEMCU_APIHANDLING_H
-#define AUTOBLINDSNODEMCU_APIHANDLING_H
+#ifndef AUTOBLINDSNODEMCU_INTERNETHANDLING_H
+#define AUTOBLINDSNODEMCU_INTERNETHANDLING_H
 
 
 #include <ctime>
@@ -8,8 +8,6 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecure.h>
-#include <CertStoreBearSSL.h>
-#include <LittleFS.h>
 #include <ArduinoJson.h>
 #include "Interface.h"
 
@@ -40,12 +38,12 @@ namespace Constants
     inline constexpr auto attemptWiFiCooldownLen { 3'600'000UL };
 }
 
-void IRAM_ATTR timerHandler();
+extern WiFiClientSecure g_wiFiClient;
+
+void IRAM_ATTR timerCallback();
 void IRAM_ATTR sunriseHandler();
 void IRAM_ATTR sunsetHandler();
-void updateLEDIndicator();
 bool initWiFi();
-bool parseSSLCertificates();
 bool updateTimers();
 
 #endif

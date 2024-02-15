@@ -14,9 +14,12 @@
 
 struct Interface
 {
-    // updates `interruptCallbackHandler` periodically
-    ESP8266Timer interruptTimer {};
-    ESP8266_ISR_Timer interruptCallbackHandler {};
+    // updates `timerISRHandler` periodically
+    ESP8266Timer timerHandler {};
+    ESP8266_ISR_Timer timerISRHandler {};
+
+    // a boolean value used in determining whether the onboard LED should blink
+    bool shouldLEDBlink {};
 
     bool sunriseTimerSet {};
     bool sunsetTimerSet {};
@@ -25,9 +28,11 @@ struct Interface
 
     PushButton upBtn {};
     PushButton dnBtn {};
+
+    void setLEDIndicator(bool state);
 };
 
 extern Interface interface;
 
 
-#endif //AUTOBLINDSNODEMCU_INTERFACE_H
+#endif // AUTOBLINDSNODEMCU_INTERFACE_H
