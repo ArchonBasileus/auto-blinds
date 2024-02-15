@@ -3,7 +3,7 @@
 void Motor::deriveInstruction(State instruction)
 {
     // if motor is within boundaries and instruction was triggered by timer or by legal manual input
-    if (withinBounds() && (m_state == stationary || m_state == -instruction))
+    if (m_state == stationary || m_state == -instruction)
         tryStepping(instruction);
     else
         stopStepping();
@@ -31,9 +31,12 @@ void Motor::stopStepping()
 {
     m_state = stationary;
     system.disableOutputs();
+
+    // update motor's position in flash memory to reflect new position
+    setFlashPosition(system.currentPosition());
 }
 
-void Motor::runInstruction()
+void Motor::tryInstruction()
 {
     // motor steps in instructed direction if state not stationary and step finishes inside set boundaries
     if (m_state != stationary && system.distanceToGo())

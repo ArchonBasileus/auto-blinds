@@ -1,4 +1,4 @@
-#include "APIHandling.h"
+#include "FlashMemHandling.h"
 #include "ESP8266_ISR_Timer.h"
 
 void IRAM_ATTR upBtnHandler();
@@ -6,32 +6,41 @@ void IRAM_ATTR dnBtnHandler();
 
 [[maybe_unused]] void setup()
 {
+    // configure onboard LED as an output pin
+    pinMode(LED_BUILTIN, OUTPUT);
+
+    // attach timer callback handler
+    interface.timerHandler.attachInterruptInterval(Constants::timerUpdateInterval, timerCallback);
+
     // attach pin-change/push button interrupts
     attachInterrupt(digitalPinToInterrupt(interface.upBtn.getPinNumber()), upBtnHandler, RISING);
     attachInterrupt(digitalPinToInterrupt(interface.dnBtn.getPinNumber()), dnBtnHandler, RISING);
 
-    // if Wi-Fi connection, filesystem initialisation and SSL certificates parsing successful
-    if (initWiFi() && LittleFS.begin() && parseSSLCertificates())
+    // ensure filesystem mount is successful before continuing
+    if (LittleFS.begin())
     {
-        // initialise NTP time client
-        configTime(Constants::posixTimezone, Constants::ntpServerURL);
+        // start blinking the input/motor-blocking operation LED indicator
+        interface.setLEDIndicator(true);
 
-        // attach timer handler
-        interface.interruptTimer.attachInterruptInterval(Constants::timerUpdateInterval, timerHandler);
+        linkFlashPosition();
 
-        // set sunrise/sunset timers as required
-        updateTimers();
+        // if SSL certificate parsing and Wi-Fi initialisation successful, set sunrise/sunset timers
+        if (parseSSLCertificates() && initWiFi())
+        {
+            // initialise NTP time client
+            configTime(Constants::posixTimezone, Constants::ntpServerURL);
+
+            updateTimers();
+        }
     }
-    // add more sophisticated error handling for all of the above section here
+    // add more sophisticated error handling
 }
 
 [[maybe_unused]] void loop()
 {
-    // poll 'up' button; if delay met, and interrupt triggered by contact
+    // poll the 'up'/'down' push-buttons, and verify any existing inputs before accepting them
     if (interface.upBtn.verifyExistingInput())
         interface.motor.deriveInstruction(Motor::clockwise);
-
-    // same as above, but for 'down' push button
     if (interface.dnBtn.verifyExistingInput())
         interface.motor.deriveInstruction(Motor::counterClockwise);
 
@@ -39,8 +48,8 @@ void IRAM_ATTR dnBtnHandler();
     if (!(interface.sunriseTimerSet || interface.sunsetTimerSet) && initWiFi())
         updateTimers();
 
-    // execute queued motor instruction
-    interface.motor.runInstruction();
+    // attempt to execute queued motor instruction
+    interface.motor.tryInstruction();
 }
 
 void upBtnHandler()

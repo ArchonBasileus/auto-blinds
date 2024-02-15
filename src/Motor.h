@@ -1,7 +1,11 @@
 #ifndef AUTOBLINDSNODEMCU_MOTOR_H
 #define AUTOBLINDSNODEMCU_MOTOR_H
 
+
 #include <AccelStepper.h>
+
+// forward declaration for function defined in `FlashMemHandling.cpp`
+void setFlashPosition(int newMotorPosition);
 
 class Motor
 {
@@ -34,7 +38,7 @@ public:
     bool withinBounds();
     void tryStepping(State instruction);
     void stopStepping();
-    void runInstruction();
+    void tryInstruction();
 
     AccelStepper system {};
 
