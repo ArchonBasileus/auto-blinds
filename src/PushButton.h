@@ -3,11 +3,14 @@
 
 
 #include <Arduino.h>
+class Interface;
+class Motor;
+class Switch;
 
 class PushButton
 {
 public:
-    static constexpr auto s_debounceDelay { 20UL };
+    static constexpr auto s_debounceDelayLen {20UL };
 
     PushButton() = default;
 
@@ -15,13 +18,20 @@ public:
             : m_pinNumber { pin }
     {}
 
-    [[nodiscard]] uint8_t getPinNumber() const { return m_pinNumber; }
+    virtual bool verifyExistingInput();
     void resetDebounceTimer() { m_lastUpdate = millis(); }
-    bool verifyExistingInput();
 
-private:
+protected:
+    friend class Interface;
+    /*
+    friend Interface::Interface(const Motor &&motorObject,
+                                const PushButton &&upBtnObject,
+                                const PushButton &&dnBtnObject,
+                                const Switch &&timerSwitchObject);
+    */
+
     uint8_t m_pinNumber {};
-    unsigned long m_lastUpdate {};
+    volatile unsigned long m_lastUpdate {};
 
 };
 

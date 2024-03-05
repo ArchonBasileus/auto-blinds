@@ -5,12 +5,6 @@
 #include <LittleFS.h>
 #include "InternetHandling.h"
 
-namespace Constants
-{
-    inline constexpr auto motorPositionFilePath { "/motorPosition.bin" };
-}
-
 bool parseSSLCertificates();
-void linkFlashPosition();
 
 #endif // AUTOBLINDSESP8266_FLASHMEMHANDLING_H

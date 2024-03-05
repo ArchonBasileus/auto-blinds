@@ -8,81 +8,56 @@ WiFiClientSecure g_wiFiClient {};
 // a static-length character array which holds the API's URL
 char g_apiURL[apiURLPrefixLen + apiURLSuffixLen]
 {
-    "https://api.sunrisesunset.io/json?lat=XXXXXXXXXX&lng=XXXXXXXXXX&timezone=XXXX&date=YYYY-MM-DD"
+    "https://api.sunrisesunset.io/json?lat=-37.843224&lng=144.994190&timezone=AEST&date=YYYY-MM-DD"
 };
 
-void timerCallback()
-{
-    interface.timerISRHandler.run();
-
-    if (!interface.shouldLEDBlink)
-        return;
-
-    static auto s_delayTimerStart { 0UL };
-
-    if (millis() - s_delayTimerStart >= Constants::ledBlinkDelay)
-    {
-        digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
-        s_delayTimerStart = millis();
-    }
-}
-
-void sunriseHandler()
-{
-    interface.motor.tryStepping(Motor::clockwise);
-    interface.sunriseTimerSet = false;
-}
-
-void sunsetHandler()
-{
-    interface.motor.tryStepping(Motor::counterClockwise);
-    interface.sunsetTimerSet = false;
-}
-
-bool initWiFi()
+bool tryWiFiConnect()
 {
     static auto s_lastWiFiConnectAttempt { 0UL };
 
-    if (WiFi.status() == WL_CONNECTED)
-        return true;
-    // if Wi-Fi not connected, cease attempts to connect if it has not been at least an hour since last attempt
-    else if (millis() - s_lastWiFiConnectAttempt > Constants::attemptWiFiCooldownLen)
-        return false;
+    if (!g_interface.isIndicatorOn())
+        g_interface.toggleLoadingIndicator();
 
-    // indicate beginning of program-blocking internet operations via blinking LED
-    interface.setLEDIndicator(true);
+    // could look like error when resetting timers with Wi-Fi cooldown
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        // if at least one prior connection attempt has been made
+        // less than an hour since current attempt, return false
+        if (s_lastWiFiConnectAttempt && ((millis() - s_lastWiFiConnectAttempt) <= Constants::tryWiFiCooldownLen))
+        {
+            g_interface.toggleLoadingIndicator();
+            return false;
+        }
+    }
+    else
+        return true;
 
     WiFi.begin(Constants::ssid, Constants::pw);
-    unsigned long wiFiConnectStartTime { millis() };
+    s_lastWiFiConnectAttempt = millis();
 
-    while (WiFi.status() != WL_CONNECTED
+    while ((WiFi.status() != WL_CONNECTED)
            && !WiFi.localIP()
-           && (millis() - wiFiConnectStartTime <= Constants::wiFiTimeoutLen))
-    {
-        timerCallback();
+           && (millis() - s_lastWiFiConnectAttempt <= Constants::wiFiTimeoutLen))
         yield();
+
+    // toggles loading indicator off if Wi-Fi failed to connect
+    if (WiFi.status() != WL_CONNECTED)
+    {
+        g_interface.toggleLoadingIndicator();
+        return false;
     }
 
-    // potentially add handling to make error diagnostics easier
-
-    bool isWiFiConnected { WiFi.status() == WL_CONNECTED };
-
-    // disable blinking LED indicator if no connection
-    if (!isWiFiConnected)
-        interface.setLEDIndicator(false);
-
-    return (isWiFiConnected);
+    return true;
 }
 
 int parseTimeField(const char*& timeString, char delimiter)
 {
-    // the `10` argument to `strtol` describes the numeral system used in `timeString` (decimal/base 10 here)
-    int timeFieldValue { strtol(timeString, const_cast<char**>(&timeString), 10) };
+    // the `10` argument to `strtol` describes the numeral system used in `timeString` (decimal/base-10 here)
+    int timeFieldValue{ strtol(timeString, const_cast<char**>(&timeString), 10) };
 
     if (*timeString == delimiter)
     {
         timeString++;
-
         return timeFieldValue;
     }
 
@@ -138,8 +113,8 @@ JsonDocument getApiJSON(const std::tm& currentTime)
 
     int respCode{ httpClient.GET() };
 
-    JsonDocument apiJSON {};
-    DeserializationError dsError {};
+    JsonDocument apiJSON{};
+    DeserializationError dsError{};
 
     // successful API poll, add more sophisticated error handling
     if (respCode > 0 && respCode < 400)
@@ -163,12 +138,9 @@ JsonDocument getApiJSON(const std::tm& currentTime)
 
 TimerUpdateData getTimerInfo()
 {
-    TimerUpdateData timerInfo {};
+    TimerUpdateData timerInfo{};
 
-    if (interface.sunsetTimerSet && !interface.sunriseTimerSet)
-        return timerInfo;
-
-    tm ntpTime { getCurrentTime() };
+    tm ntpTime{ getCurrentTime() };
     // add more sophisticated error handling
     int milliSecsElapsedToday = parseTimeToMilliseconds(ntpTime.tm_hour,
                                                         ntpTime.tm_min,
@@ -183,7 +155,7 @@ TimerUpdateData getTimerInfo()
         timerInfo.sunsetTimerLen = parseTimeToMilliseconds(apiJSON["results"]["sunset"].as<const char *>())
                                    - milliSecsElapsedToday;
     }
-    // add more sophisticated error handling
+        // add more sophisticated error handling
     else
     {
         // Serial.println("HTTP GET returned a null JSON");
@@ -205,7 +177,7 @@ TimerUpdateData getTimerInfo()
 
         timerInfo.sunriseTimerLen = remainingMilliSecsToday
                                     + parseTimeToMilliseconds(
-                                            apiJSON["results"]["sunrise"].as<const char*>());
+                apiJSON["results"]["sunrise"].as<const char*>());
         timerInfo.sunsetTimerLen = remainingMilliSecsToday
                                    + parseTimeToMilliseconds(apiJSON["results"]["sunset"].as<const char*>());
 
@@ -219,34 +191,28 @@ TimerUpdateData getTimerInfo()
     return timerInfo;
 }
 
+// use the return value of this function in error handling
 bool updateTimers()
 {
     // add more sophisticated error handling
-    TimerUpdateData timerInfo { getTimerInfo() };
+    TimerUpdateData timerInfo{ getTimerInfo() };
 
-    // input/motor-blocking operations finished: disable the onboard LED blink indicator
-    interface.setLEDIndicator(false);
+    g_interface.toggleLoadingIndicator();
+
+    /*
+    Serial.printf("timers required = %d\nsecs til sunrise = %d secs\nsecs til sunset = %d secs\n",
+                  timerInfo.timersRequired,
+                  (timerInfo.sunriseTimerLen / 1000),
+                  (timerInfo.sunsetTimerLen / 1000));
+    */
 
     if (timerInfo.timersRequired > 0)
     {
-        if (interface.timerISRHandler.setTimeout(timerInfo.sunsetTimerLen, sunsetHandler) != -1)
-        {
-            interface.sunsetTimerSet = true;
-            // Serial.printf("sunset timer length = %d seconds\n", timerInfo.sunsetTimerLen / 1000);
-        }
-        else
+        if (!g_interface.trySetTimer(timerInfo.sunsetTimerLen, Interface::TimerType::sunset))
             return false;
 
         if (timerInfo.timersRequired > 1)
-        {
-            if (interface.timerISRHandler.setTimeout(timerInfo.sunriseTimerLen, sunriseHandler) != -1)
-            {
-                interface.sunriseTimerSet = true;
-                // Serial.printf("sunrise timer length = %d seconds\n", timerInfo.sunriseTimerLen / 1000);
-            }
-            else
-                return false;
-        }
+            return g_interface.trySetTimer(timerInfo.sunriseTimerLen, Interface::TimerType::sunrise);
     }
 
     return true;

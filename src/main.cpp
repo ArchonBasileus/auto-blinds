@@ -1,63 +1,36 @@
 #include "FlashMemHandling.h"
 #include "ESP8266_ISR_Timer.h"
 
-void IRAM_ATTR upBtnHandler();
-void IRAM_ATTR dnBtnHandler();
-
+// see initialisation of `g_interface` in `Interface.cpp` for other relevant program setup
 [[maybe_unused]] void setup()
 {
-    // configure onboard LED as an output pin
-    pinMode(LED_BUILTIN, OUTPUT);
+    // filesystem setup must be done within `setup()` for effects to persist throughout program
+    if (!g_interface.trySetupFS())
+        return;
 
-    // attach timer callback handler
-    interface.timerHandler.attachInterruptInterval(Constants::timerUpdateInterval, timerCallback);
+    // initialise NTP time-client
+    configTime(Constants::posixTimezone, Constants::ntpServerURL);
 
-    // attach pin-change/push button interrupts
-    attachInterrupt(digitalPinToInterrupt(interface.upBtn.getPinNumber()), upBtnHandler, RISING);
-    attachInterrupt(digitalPinToInterrupt(interface.dnBtn.getPinNumber()), dnBtnHandler, RISING);
-
-    // ensure filesystem mount is successful before continuing
-    if (LittleFS.begin())
-    {
-        // start blinking the input/motor-blocking operation LED indicator
-        interface.setLEDIndicator(true);
-
-        linkFlashPosition();
-
-        // if SSL certificate parsing and Wi-Fi initialisation successful, set sunrise/sunset timers
-        if (parseSSLCertificates() && initWiFi())
-        {
-            // initialise NTP time client
-            configTime(Constants::posixTimezone, Constants::ntpServerURL);
-
-            updateTimers();
-        }
-    }
-    // add more sophisticated error handling
+    // if no setup errors, timer switch enabled, and Wi-Fi connected, set sunrise/sunset timers
+    if (g_interface.timerSwitch.isEnabled() && tryWiFiConnect())
+        updateTimers();
 }
 
-[[maybe_unused]] void loop()
+void loop()
 {
-    // poll the 'up'/'down' push-buttons, and verify any existing inputs before accepting them
-    if (interface.upBtn.verifyExistingInput())
-        interface.motor.deriveInstruction(Motor::clockwise);
-    if (interface.dnBtn.verifyExistingInput())
-        interface.motor.deriveInstruction(Motor::counterClockwise);
+    // poll both push buttons; if legal input given since last check, send instruction to motor
+    if (g_interface.upBtn.verifyExistingInput())
+        g_interface.motor.deriveInstruction(Motor::clockwise);
+    if (g_interface.dnBtn.verifyExistingInput())
+        g_interface.motor.deriveInstruction(Motor::counterClockwise);
 
-    // if no timers are set and Wi-Fi connection successful, update timers (add more guards)
-    if (!(interface.sunriseTimerSet || interface.sunsetTimerSet) && initWiFi())
+    // poll timer-toggling switch for a legal input
+    if (g_interface.timerSwitch.verifyExistingInput())
+        g_interface.toggleTimers();
+    // if no timers are set (e.g., because they have expired), generate new ones
+    else if (g_interface.timerSwitch.isEnabled() && !g_interface.areTimersSet() && tryWiFiConnect())
         updateTimers();
 
     // attempt to execute queued motor instruction
-    interface.motor.tryInstruction();
-}
-
-void upBtnHandler()
-{
-    interface.upBtn.resetDebounceTimer();
-}
-
-void dnBtnHandler()
-{
-    interface.dnBtn.resetDebounceTimer();
+    g_interface.motor.tryInstruction();
 }

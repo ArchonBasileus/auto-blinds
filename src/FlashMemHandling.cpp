@@ -31,18 +31,6 @@ int getFlashPosition()
     return readPosition;
 }
 
-void linkFlashPosition()
-{
-    // if motor position not stored in flash memory, create a file to store it in flash memory
-    if (!LittleFS.exists(Constants::motorPositionFilePath))
-    {
-        setFlashPosition(static_cast<int>(Motor::s_stepRange));
-        return;
-    }
-
-    interface.motor.system.setCurrentPosition(getFlashPosition());
-}
-
 void setFlashPosition(int newMotorPosition)
 {
     File positionFile = LittleFS.open(Constants::motorPositionFilePath, "w");
