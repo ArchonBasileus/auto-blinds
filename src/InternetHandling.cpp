@@ -150,7 +150,7 @@ TimerUpdateData getTimerInfo()
 
     if (!(apiJSON = getApiJSON(ntpTime)).isNull())
     {
-        timerInfo.sunriseTimerLen = parseTimeToMilliseconds(apiJSON["results"]["sunrise"].as<const char *>())
+        timerInfo.sunriseTimerLen = parseTimeToMilliseconds(apiJSON["results"]["first_light"].as<const char *>())
                                     - milliSecsElapsedToday;
         timerInfo.sunsetTimerLen = parseTimeToMilliseconds(apiJSON["results"]["sunset"].as<const char *>())
                                    - milliSecsElapsedToday;
@@ -177,7 +177,7 @@ TimerUpdateData getTimerInfo()
 
         timerInfo.sunriseTimerLen = remainingMilliSecsToday
                                     + parseTimeToMilliseconds(
-                apiJSON["results"]["sunrise"].as<const char*>());
+                                        apiJSON["results"]["first_light"].as<const char*>());
         timerInfo.sunsetTimerLen = remainingMilliSecsToday
                                    + parseTimeToMilliseconds(apiJSON["results"]["sunset"].as<const char*>());
 
