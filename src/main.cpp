@@ -11,9 +11,15 @@
     // initialise NTP time-client
     configTime(Constants::posixTimezone, Constants::ntpServerURL);
 
-    // if no setup errors, timer switch enabled, and Wi-Fi connected, set sunrise/sunset timers
-    if (g_interface.timerSwitch.isEnabled() && tryWiFiConnect())
-        updateTimers();
+    // if timer switch enabled and Wi-Fi connected, set sunrise/sunset timers
+    if (g_interface.timerSwitch.isEnabled())
+    {
+        if (tryWiFiConnect())
+            updateTimers();
+    }
+    // if timer switch disabled, manually toggle off loading indicator
+    else
+        g_interface.toggleLoadingIndicator();
 }
 
 void loop()

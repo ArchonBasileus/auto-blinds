@@ -66,8 +66,9 @@ bool Interface::trySetTimer(unsigned long timerLen, TimerType timerType)
 void Interface::clearTimers()
 {
     // if timed interruptions have just been disabled, clear existing timers
-    for (int i{ 0 }; i < m_timerISRHandler.getNumTimers(); i++)
-        m_timerISRHandler.deleteTimer(i);
+    auto nTimer { 0 };
+    while (m_timerISRHandler.isEnabled(nTimer))
+        m_timerISRHandler.deleteTimer(nTimer++);
 }
 
 void Interface::toggleTimers()
