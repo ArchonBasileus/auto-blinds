@@ -22,11 +22,11 @@ namespace Constants
 {
     inline constexpr auto ssid
     {
-        "Silliest Wifi"
+        "..."
     };
     inline constexpr auto pw
     {
-        "Gangweed420"
+        "..."
     };
     inline constexpr auto ntpServerURL { "pool.ntp.org" };
     inline constexpr auto posixTimezone { "AEST-10AEDT,M10.1.0,M4.1.0" };
