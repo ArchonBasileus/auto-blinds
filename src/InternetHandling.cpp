@@ -8,7 +8,7 @@ WiFiClientSecure g_wiFiClient {};
 // a static-length character array which holds the API's URL
 char g_apiURL[apiURLPrefixLen + apiURLSuffixLen]
 {
-    "https://api.sunrisesunset.io/json?lat=-37.843224&lng=144.994190&timezone=AEST&date=YYYY-MM-DD"
+    "https://api.sunrisesunset.io/json?lat=LATITUDE_HERE&lng=LONGITUDE_HERE&timezone=AEST&date=YYYY-MM-DD"
 };
 
 bool tryWiFiConnect()
